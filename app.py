@@ -171,11 +171,48 @@ class VenueScraper:
         logger.info(f"Final venue count: {len(final_venues)}")
         return len(final_venues)
     
+    async def extract_text_content(self, element):
+        """Extract text content with better formatting"""
+        try:
+            # Get inner HTML to preserve some structure
+            inner_html = await element.inner_html()
+            
+            # Get text content
+            text_content = await element.text_content()
+            
+            if not text_content:
+                return "N/A"
+            
+            # Clean up text content
+            text_content = text_content.strip()
+            
+            # For better readability, try to preserve line breaks
+            # Replace common HTML elements with line breaks
+            import re
+            if inner_html:
+                # Add line breaks for common block elements
+                formatted_html = re.sub(r'</?(div|li|p|h[1-6]|br)[^>]*>', '\n', inner_html)
+                # Remove HTML tags
+                formatted_text = re.sub(r'<[^>]+>', '', formatted_html)
+                # Clean up multiple whitespaces and newlines
+                formatted_text = re.sub(r'\n\s*\n', '\n', formatted_text)
+                formatted_text = re.sub(r'\s+', ' ', formatted_text)
+                formatted_text = formatted_text.strip()
+                
+                if formatted_text and len(formatted_text) > len(text_content) * 0.8:
+                    return formatted_text
+            
+            return text_content
+            
+        except Exception as e:
+            logger.warning(f"Error extracting text content: {str(e)}")
+            return "N/A"
+
     async def extract_venue_data(self, page):
         """Extract venue data from current page"""
         venue_info = {}
         
-        # Define selectors and their corresponding keys
+        # Define selectors and their corresponding keys - Updated with your requested selectors
         selectors = {
             'name': "//*[@id='root']/div/div/div/div[4]/div[1]/div[1]/h1",
             'price': "//*[@id='root']/div/div/div/div[4]/div[1]/div[1]/div[3]/div/div[1]",
@@ -184,10 +221,10 @@ class VenueScraper:
             'rating': "//*[@id='root']/div/div/div/div[4]/div[1]/div[3]/div[3]/div/div/div/span[1]",
             'raters': "//*[@id='root']/div/div/div/div[4]/div[1]/div[3]/div[3]/div/div/div/span[2]",
             'about_venue': "//*[@id='root']/div/div/div/div[4]/div[2]/div/div",
-            'available_sports': "//*[@id='root']/div/div/div/div[4]/div[3]/div",
+            'available_sports': "//*[@id='root']/div/div/div/div[4]/div[3]",
             'highlights': "//*[@id='root']/div/div/div/div[4]/div[4]/div",
-            'offer': "//*[@id='root']/div/div/div/div[4]/div[5]",
-            'amenities': "//*[@id='root']/div/div/div/div[4]/div[6]"
+            'amenities': "//*[@id='root']/div/div/div/div[4]/div[5]",
+            'offer': "//*[@id='root']/div/div/div/div[4]/div[6]"
         }
         
         # Extract basic information
@@ -195,13 +232,14 @@ class VenueScraper:
             try:
                 element = await page.wait_for_selector(f"xpath={selector}", timeout=5000)
                 if element:
-                    venue_info[key] = await element.text_content() or "N/A"
+                    venue_info[key] = await self.extract_text_content(element)
                 else:
                     venue_info[key] = "N/A"
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to extract {key}: {str(e)}")
                 venue_info[key] = "N/A"
         
-        # Handle modal dialogs
+        # Handle modal dialogs for facilities and venue rules
         modal_selectors = {
             'facilities': {
                 'open_btn': "//*[@id='root']/div/div/div/div[4]/div[7]",
@@ -224,7 +262,7 @@ class VenueScraper:
                     
                     content_element = await page.wait_for_selector(f"xpath={modal['content']}", timeout=5000)
                     if content_element:
-                        venue_info[key] = await content_element.text_content() or "N/A"
+                        venue_info[key] = await self.extract_text_content(content_element)
                     else:
                         venue_info[key] = "N/A"
                     
@@ -235,8 +273,12 @@ class VenueScraper:
                         await asyncio.sleep(1)
                 else:
                     venue_info[key] = "N/A"
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to extract {key} from modal: {str(e)}")
                 venue_info[key] = "N/A"
+        
+        # Log extracted data for debugging
+        logger.info(f"Extracted venue data: {venue_info.get('name', 'Unknown venue')}")
         
         return venue_info
     
@@ -435,6 +477,20 @@ HTML_TEMPLATE = """
         <div class="info">
             <p>This tool scrapes venue data from KheloMore for multiple cities in India.</p>
             <p>Cities to scrape: {{ cities|length }}</p>
+            <p><strong>Data being scraped:</strong></p>
+            <ul>
+                <li>Venue Name</li>
+                <li>Price & Timing</li>
+                <li>Address</li>
+                <li>Rating & Number of Raters</li>
+                <li>About Venue</li>
+                <li>Available Sports</li>
+                <li>Amenities</li>
+                <li>Highlights</li>
+                <li>Facilities (via modal)</li>
+                <li>Venue Rules (via modal)</li>
+                <li>Offers</li>
+            </ul>
         </div>
         
         <button onclick="startScraping()">Start Scraping</button>
@@ -523,9 +579,6 @@ def download_excel():
     except Exception as e:
         return f"Error: {str(e)}", 500
 
-def create_app():
-    return app
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port)
