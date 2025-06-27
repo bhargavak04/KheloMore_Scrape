@@ -1,13 +1,41 @@
 [phases.setup]
-nixPkgs = ["python3", "pip", "chromium", "libnss3", "libatk1.0-0", "libatk-bridge2.0-0", "libcups2", "libdrm2", "libxkbcommon0", "libxcomposite1", "libxdamage1", "libxfixes3", "libxrandr2", "libgbm1", "libpango-1.0-0", "libcairo2", "libasound2", "libatspi2.0-0", "libxshmfence1"]
+nixPkgs = [
+    "python39",
+    "python39Packages.pip",
+    "chromium",
+    "libnss",
+    "atk",
+    "at-spi2-atk",
+    "cups",
+    "libdrm",
+    "libxkbcommon",
+    "libXcomposite",
+    "libXdamage",
+    "libXfixes",
+    "libxrandr",
+    "libgbm",
+    "pango",
+    "cairo",
+    "alsa-lib",
+    "at-spi2-core",
+    "libxshmfence",
+    "nss",
+    "nspr",
+    "dbus"
+]
 
 [phases.install]
 cmds = [
     "pip install --upgrade pip",
     "pip install -r requirements.txt",
-    "python -m playwright install chromium",
-    "python -m playwright install-deps"
+    "playwright install chromium",
+    "playwright install-deps"
+]
+
+[phases.build]
+cmds = [
+    "echo 'Building...'"
 ]
 
 [start]
-cmd = "python app.py"
+cmd = "./start.sh"
