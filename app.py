@@ -605,4 +605,7 @@ def download_excel():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    # Print startup message to help with debugging
+    print(f"Starting server on port {port}")
+    print("Environment variables:", os.environ)
+    app.run(host="0.0.0.0", port=port, debug=False)
