@@ -311,15 +311,15 @@ class VenueScraper:
                     ]
                 )
                 
-                # Create a new browser context with timeout settings
+                # Create a new browser context
                 context = await browser.new_context(
                     viewport={'width': 1920, 'height': 1080},
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    timeout=30000
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
                 )
                 
-                # Create a new page
+                # Create a new page with timeout settings
                 page = await context.new_page()
+                page.set_default_timeout(30000)
                 
                 # Navigate to city page with retries
                 city_url = f"https://www.khelomore.com/venues/{city.lower().replace(' ', '-')}"
