@@ -2,42 +2,5 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "chmod +x start.sh && ./start.sh"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
-
-[deploy.environment]
-NODE_VERSION = "18.x"
-PYTHON_VERSION = "3.9"
-PLAYWRIGHT_BROWSERS_PATH = "0"
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "0"
-PYTHONUNBUFFERED = "true"
-PYTHONDONTWRITEBYTECODE = "1"
-PYTHONFAULTHANDLER = "1"
-PYTHONHASHSEED = "random"
-PYTHONPATH = "/app"
-
-[build.args]
-NIXPKGS_ALLOW_UNFREE = "1"
-
-[build.publish]
-directories = [
-  "/app/data",
-  "/app/venues_data.json",
-  "/app/venues_data.xlsx",
-  "/app/progress.json"
-]
-
-[cache]
-paths = [
-  "/root/.cache/pip",
-  "/root/.cache/playwright",
-  "/app/node_modules"
-]
-
-[healthcheck]
-enabled = true
-interval = 60
-retries = 3
-start_period = 30
-timeout = 10
