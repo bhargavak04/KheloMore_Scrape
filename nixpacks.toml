@@ -14,11 +14,6 @@ nixPkgs = [
     "libXfixes",
     "libxrandr",
     "libgbm",
-    "pango",
-    "cairo",
-    "alsa-lib",
-    "at-spi2-core",
-    "libxshmfence",
     "nss",
     "nspr",
     "dbus"
@@ -28,14 +23,35 @@ nixPkgs = [
 cmds = [
     "pip install --upgrade pip",
     "pip install -r requirements.txt",
-    "playwright install chromium",
+    "playwright install --with-deps",
     "playwright install-deps"
 ]
 
 [phases.build]
 cmds = [
-    "echo 'Building...'"
+    "chmod +x start.sh"
 ]
 
 [start]
 cmd = "./start.sh"
+
+[build.environment]
+NIXPKGS_ALLOW_UNFREE = "1"
+PLAYWRIGHT_BROWSERS_PATH = "0"
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "0"
+PYTHONUNBUFFERED = "true"
+PYTHONDONTWRITEBYTECODE = "1"
+PYTHONFAULTHANDLER = "1"
+PYTHONHASHSEED = "random"
+PYTHONPATH = "/app"
+
+[build.args]
+NIXPKGS_ALLOW_UNFREE = "1"
+
+[build.publish]
+directories = [
+    "/app/data",
+    "/app/venues_data.json",
+    "/app/venues_data.xlsx",
+    "/app/progress.json"
+]

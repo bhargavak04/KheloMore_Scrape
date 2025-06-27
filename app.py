@@ -54,105 +54,115 @@ class VenueScraper:
             logger.error(f"Failed to click element: {str(e)}")
             return False
     
+    async def safe_extract(self, page, selector, default=""):
+        """Safely extract text from a selector with multiple fallback options"""
+        try:
+            element = await page.query_selector(selector)
+            if element:
+                text = await element.inner_text()
+                if text and text.strip():
+                    return ' '.join(text.split()).strip()
+            return default
+        except Exception as e:
+            logger.debug(f"Failed to extract with selector {selector}: {str(e)}")
+            return default
+    
+    async def extract_text_content(self, element):
+        """Extract and clean text content from an element"""
+        try:
+            text = await element.inner_text()
+            # Clean up whitespace and newlines
+            text = ' '.join(text.split())
+            return text.strip()
+        except Exception as e:
+            logger.warning(f"Error extracting text: {str(e)}")
+            return ""
+    
     async def load_all_venues(self, page):
         """Load all venues by clicking load more buttons"""
         logger.info("Starting to load all venues...")
         
-        max_attempts = 50
+        max_attempts = 20  # Reduced to prevent long running times
         attempts = 0
-        consecutive_failures = 0
+        last_count = 0
+        same_count = 0
         
-        while attempts < max_attempts and consecutive_failures < 5:
+        while attempts < max_attempts:
             try:
-                # Wait for page to stabilize
+                # Wait for page to be interactive
                 await page.wait_for_load_state("networkidle", timeout=10000)
                 await asyncio.sleep(2)
                 
-                # Count current venues
-                current_venues = await page.query_selector_all(
-                    "//*[@id='root']/div/div/div/div/div[2]/div[2]/div[2]/div"
-                )
+                # Try multiple selectors to find venue cards
+                venue_selectors = [
+                    "div[class*='VenueCard']",
+                    "div[data-testid*='venue']",
+                    "div.card",
+                    "div[class*='venue-card']",
+                    "//div[contains(@class, 'venue')]"
+                ]
+                
+                current_venues = []
+                for selector in venue_selectors:
+                    venues = await page.query_selector_all(selector)
+                    if venues:
+                        current_venues = venues
+                        break
+                
                 current_count = len(current_venues)
                 logger.info(f"Currently loaded venues: {current_count}")
                 
-                # Scroll to bottom to trigger lazy loading
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(3)
-                
-                # Try multiple load more button strategies
-                load_more_clicked = False
-                
-                # Strategy 1: Specific xpath for load more button
-                load_more_xpath = "//*[@id='root']/div/div/div/div/div[2]/div[2]/div[2]/div[21]/div"
-                load_more_element = await self.wait_for_element_with_retry(page, f"xpath={load_more_xpath}", timeout=5000)
-                
-                if load_more_element:
-                    success = await self.safe_click(load_more_element, page)
-                    if success:
-                        logger.info("Clicked load more button using specific xpath")
-                        load_more_clicked = True
-                
-                # Strategy 2: Generic load more selectors
-                if not load_more_clicked:
-                    load_more_selectors = [
-                        "button:has-text('Load More')",
-                        "div:has-text('Load More')",
-                        "button:has-text('load more')",
-                        "div:has-text('load more')",
-                        "[class*='load-more']",
-                        "[class*='loadmore']",
-                        "button[class*='load']",
-                        "div[class*='load']",
-                        "//div[contains(text(), 'Load More')]",
-                        "//button[contains(text(), 'Load More')]",
-                        "//div[contains(@class, 'load')]",
-                        "//button[contains(@class, 'load')]"
-                    ]
-                    
-                    for selector in load_more_selectors:
-                        try:
-                            if selector.startswith("//"):
-                                element = await page.wait_for_selector(f"xpath={selector}", timeout=3000)
-                            else:
-                                element = await page.wait_for_selector(selector, timeout=3000)
-                            
-                            if element and await element.is_visible():
-                                success = await self.safe_click(element, page)
-                                if success:
-                                    logger.info(f"Clicked load more using selector: {selector}")
-                                    load_more_clicked = True
-                                    break
-                        except:
-                            continue
-                
-                if load_more_clicked:
-                    consecutive_failures = 0
-                    # Wait for new content to load
-                    await page.wait_for_load_state("networkidle", timeout=15000)
-                    await asyncio.sleep(3)
-                    
-                    # Verify new content loaded
-                    new_venues = await page.query_selector_all(
-                        "//*[@id='root']/div/div/div/div/div[2]/div[2]/div[2]/div"
-                    )
-                    new_count = len(new_venues)
-                    
-                    if new_count > current_count:
-                        logger.info(f"Successfully loaded {new_count - current_count} new venues")
-                    else:
-                        consecutive_failures += 1
-                        logger.warning("Load more clicked but no new venues loaded")
+                # Check if we're stuck at the same count
+                if current_count == last_count:
+                    same_count += 1
+                    if same_count >= 3:  # If we've had the same count 3 times in a row
+                        logger.info("No new venues loaded in last 3 attempts")
+                        break
                 else:
-                    consecutive_failures += 1
-                    logger.info("No load more button found, checking if all content loaded")
-                    
-                    # Wait and check again
-                    await asyncio.sleep(5)
-                    final_check = await page.query_selector_all(
-                        "//*[@id='root']/div/div/div/div/div[2]/div[2]/div[2]/div"
-                    )
-                    
-                    if len(final_check) == current_count:
+                    same_count = 0
+                    last_count = current_count
+                
+                # Scroll to bottom to trigger lazy loading
+                await page.evaluate("""
+                    window.scrollTo({
+                        top: document.body.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                """)
+                await asyncio.sleep(3)  # Wait for any lazy loading
+                
+                # Try to find and click load more button if it exists
+                load_more_selectors = [
+                    "button:has-text('Load More')",
+                    "div:has-text('Load More')",
+                    "button:has-text('Show More')",
+                    "div:has-text('Show More')",
+                    "//button[contains(., 'Load More')]",
+                    "//div[contains(., 'Load More')]"
+                ]
+                
+                load_more_clicked = False
+                for selector in load_more_selectors:
+                    try:
+                        load_more = await page.query_selector(selector)
+                        if load_more and await load_more.is_visible():
+                            await load_more.click()
+                            logger.info(f"Clicked load more button: {selector}")
+                            load_more_clicked = True
+                            await asyncio.sleep(3)  # Wait for content to load
+                            break
+                    except Exception as e:
+                        continue
+                
+                # If no load more button found, we might be done
+                if not load_more_clicked:
+                    logger.info("No load more button found, checking if we have all venues")
+                    # Check if we've scrolled to the bottom
+                    at_bottom = await page.evaluate("""
+                        (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 100
+                    """)
+                    if at_bottom:
+                        logger.info("Reached bottom of page")
                         logger.info("All venues appear to be loaded")
                         break
                 
@@ -298,107 +308,121 @@ class VenueScraper:
                         '--disable-gpu',
                         '--disable-extensions',
                         '--disable-background-timer-throttling',
-                        '--disable-backgrounding-occluded-windows',
-                        '--disable-renderer-backgrounding'
-                    ]
                 )
                 
-                page = await browser.new_page()
+                # Set default timeout
+                context.set_default_timeout(30000)
                 
-                # Set viewport and user agent
-                await page.set_viewport_size({"width": 1920, "height": 1080})
-                await page.set_extra_http_headers({
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                })
+                page = await context.new_page()
                 
-                url = f"https://www.khelomore.com/sports-venues/{city}/sports/all"
-                logger.info(f"Navigating to: {url}")
+                # Navigate to city page with retries
+                city_url = f"https://www.khelomore.com/venues/{city.lower().replace(' ', '-')}"
+                max_navigation_attempts = 3
                 
-                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                await asyncio.sleep(5)
+                for attempt in range(max_navigation_attempts):
+                    try:
+                        logger.info(f"Navigating to {city_url} (attempt {attempt + 1}/{max_navigation_attempts})")
+                        await page.goto(city_url, wait_until="networkidle", timeout=60000)
+                        await asyncio.sleep(5)  # Wait for initial load
+                        
+                        # Check if we're on the right page
+                        if "page not found" in (await page.title()).lower():
+                            raise Exception(f"Page not found: {city_url}")
+                            
+                        break  # Success
+                        
+                    except Exception as e:
+                        if attempt == max_navigation_attempts - 1:
+                            raise
+                        logger.warning(f"Navigation attempt {attempt + 1} failed: {str(e)}")
+                        await asyncio.sleep(5)
                 
-                # Load all venues
-                total_venues = await self.load_all_venues(page)
+                # Load all venues with improved error handling
+                logger.info("Loading all venues...")
+                venue_elements = await self.load_all_venues(page)
                 
-                if total_venues == 0:
+                if not venue_elements:
                     logger.warning(f"No venues found for {city}")
                     return city_venues
                 
-                # Process venues
-                processed_count = 0
-                max_retries = 3
+                total_venues = len(venue_elements)
+                logger.info(f"Found {total_venues} venues in {city}")
                 
-                while processed_count < total_venues:
-                    retry_count = 0
-                    
-                    while retry_count < max_retries:
+                # Process venues with better error handling
+                for idx, venue in enumerate(venue_elements, 1):
+                    max_retries = 3
+                    for attempt in range(max_retries):
                         try:
-                            logger.info(f"Processing venue {processed_count + 1}/{total_venues} in {city}")
+                            logger.info(f"Processing venue {idx}/{total_venues} in {city} (attempt {attempt + 1}/{max_retries})")
                             
-                            # Re-query venues to avoid stale references
-                            current_venues = await page.query_selector_all(
-                                "//*[@id='root']/div/div/div/div/div[2]/div[2]/div[2]/div"
-                            )
-                            
-                            if processed_count >= len(current_venues):
-                                logger.info("No more venues to process")
-                                break
-                            
-                            venue = current_venues[processed_count]
-                            
-                            # Click venue
+                            # Scroll to and click the venue
                             await venue.scroll_into_view_if_needed()
                             await asyncio.sleep(1)
                             await venue.click()
                             
-                            # Wait for venue details
-                            await page.wait_for_load_state("domcontentloaded", timeout=30000)
-                            await asyncio.sleep(3)
+                            # Wait for details to load
+                            try:
+                                await page.wait_for_selector("div[class*='venue-details']", timeout=10000)
+                            except:
+                                pass  # Continue even if specific selector not found
+                                
+                            await asyncio.sleep(3)  # Additional wait for content
                             
                             # Extract venue data
                             venue_info = await self.extract_venue_data(page)
-                            venue_info['city'] = city
-                            venue_info['scraped_at'] = datetime.now().isoformat()
-                            
-                            city_venues.append(venue_info)
-                            logger.info(f"Scraped: {venue_info.get('name', 'Unknown')} in {city}")
+                            if venue_info:
+                                venue_info.update({
+                                    'city': city,
+                                    'scraped_at': datetime.now().isoformat(),
+                                    'venue_url': page.url
+                                })
+                                city_venues.append(venue_info)
+                                logger.info(f"Scraped: {venue_info.get('name', 'Unknown')} in {city}")
                             
                             # Go back to list
-                            await page.go_back()
-                            await page.wait_for_load_state("domcontentloaded", timeout=30000)
-                            await asyncio.sleep(3)
+                            await page.go_back(wait_until="domcontentloaded")
+                            await asyncio.sleep(2)
+                            
+                            # Re-query venues to avoid stale references
+                            venue_elements = await self.load_all_venues(page)
+                            if idx < len(venue_elements):
+                                venue = venue_elements[idx]
                             
                             break  # Success, exit retry loop
                             
                         except Exception as e:
-                            logger.error(f"Error processing venue {processed_count + 1} in {city}, attempt {retry_count + 1}: {str(e)}")
-                            retry_count += 1
-                            
-                            if retry_count < max_retries:
+                            logger.error(f"Error processing venue {idx} in {city}: {str(e)}")
+                            if attempt == max_retries - 1:
+                                logger.error(f"Failed to process venue {idx} in {city} after {max_retries} attempts")
+                                # Try to recover by reloading the page
                                 try:
-                                    await page.go_back()
-                                    await page.wait_for_load_state("domcontentloaded", timeout=30000)
-                                    await asyncio.sleep(3)
+                                    await page.reload(wait_until="domcontentloaded")
+                                    await asyncio.sleep(5)
+                                    venue_elements = await self.load_all_venues(page)
+                                    if idx < len(venue_elements):
+                                        venue = venue_elements[idx]
                                 except:
                                     pass
                             else:
-                                logger.error(f"Failed to process venue {processed_count + 1} in {city} after {max_retries} attempts")
-                    
-                    processed_count += 1
+                                await asyncio.sleep(3)  # Wait before retry
                 
-                await browser.close()
                 logger.info(f"Completed scraping {city}: {len(city_venues)} venues")
                 
             except Exception as e:
                 logger.error(f"Error scraping city {city}: {str(e)}")
                 self.failed_cities.append(city)
-                try:
-                    await browser.close()
-                except:
-                    pass
+                import traceback
+                logger.error(traceback.format_exc())
+                
+            finally:
+                if browser:
+                    try:
+                        await browser.close()
+                    except:
+                        pass
         
         return city_venues
-    
+
     async def scrape_all_cities(self):
         """Scrape venues from all cities"""
         logger.info("Starting to scrape all cities")
