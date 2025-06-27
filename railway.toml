@@ -2,10 +2,15 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python -m playwright install chromium && python app.py"
+startCommand = "gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 0 app:app"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
+[build.uses]
+before = "python -m playwright install chromium"
+
 [env]
-PORT = 8080
+PORT = "8080"
+PYTHONUNBUFFERED = "true"
+PLAYWRIGHT_BROWSERS_PATH = "0"
 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 0
