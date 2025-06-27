@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "./start.sh"
+startCommand = "chmod +x start.sh && ./start.sh"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 

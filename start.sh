@@ -1,17 +1,24 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
+
+# Make sure we're in the right directory
+cd "$(dirname "$0")"
 
 # Set environment variables
 export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install Python dependencies
-pip install -r requirements.txt
+# Install Python dependencies if needed
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt
+fi
 
-# Install Playwright and browsers
-python -m playwright install --with-deps
-python -m playwright install-deps
+# Install Playwright browsers if not already installed
+if ! command -v playwright &> /dev/null; then
+    python -m playwright install --with-deps
+    python -m playwright install-deps
+fi
 
-# Make sure the data directory exists
+# Create data directory if it doesn't exist
 mkdir -p data
 
 # Start the Flask app with Gunicorn
